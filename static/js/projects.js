@@ -153,6 +153,7 @@ async function loadCurrentUser() {
         // Individual variables.
         // console.log(currentUserId, username, email, createdAt);
         document.getElementById('username-space').innerHTML = username + "'s";
+        document.getElementById('email-space').innerHTML = email;
 
         return {
             userId: currentUserId,
