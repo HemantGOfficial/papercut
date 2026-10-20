@@ -72,6 +72,7 @@ const deleteProjectModal = document.getElementById("deleteProjectModal");
 const shareProjectModal = document.getElementById("shareProjectModal");
 const groupManagerModal = document.getElementById("groupManagerModal");
 const moveProjectModal = document.getElementById("moveProjectModal");
+const openSharedProjectModal = document.getElementById("openSharedProjectModal");
 const projectGroupsSection = document.getElementById("projectGroupsSection");
 const ungroupedSection = document.getElementById("ungroupedSection");
 const ungroupedGrid = document.getElementById("ungroupedGrid");
@@ -152,7 +153,6 @@ async function loadCurrentUser() {
         // Individual variables.
         // console.log(currentUserId, username, email, createdAt);
         document.getElementById('username-space').innerHTML = username + "'s";
-        document.getElementById('email-space').innerHTML = email + "'s";
 
         return {
             userId: currentUserId,
@@ -1198,6 +1198,73 @@ document.addEventListener("click", event => {
 });
 
 /* ==========================================
+   OPEN A SHARED PROJECT FROM A PASTED LINK
+========================================== */
+function setSharedLinkStatus(message, kind = "") {
+    const status = document.getElementById("sharedProjectLinkStatus");
+    if (!status) return;
+    status.textContent = message;
+    status.classList.toggle("error", kind === "error");
+    status.classList.toggle("success", kind === "success");
+}
+
+function parseSharedProjectLink(rawValue) {
+    const raw = String(rawValue || "").trim();
+    if (!raw) throw new Error("Paste a project sharing link first.");
+
+    let parsed;
+    try {
+        // Accept a full URL, or a query string copied from a link.
+        if (/(^|[?&])(projectId|id|scriptId|project)=/.test(raw) && !/^https?:\/\//i.test(raw)) {
+            parsed = new URLSearchParams(raw.replace(/^.*?\?/, ""));
+        } else {
+            const url = new URL(raw, window.location.href);
+            parsed = url.searchParams;
+        }
+    } catch {
+        throw new Error("That link doesn't look valid. Paste the complete Papercut sharing link.");
+    }
+
+    const projectId = parsed.get("projectId") || parsed.get("id") || parsed.get("scriptId") || parsed.get("project");
+    const shareToken = parsed.get("shareToken") || "";
+    const storyId = parsed.get("storyId") || "";
+    if (!projectId) throw new Error("No project ID was found in this link. Copy the link again from the owner's Share dialog.");
+    return { projectId, shareToken, storyId };
+}
+
+function openSharedProjectDialog() {
+    const input = document.getElementById("sharedProjectLinkInput");
+    if (input) input.value = "";
+    setSharedLinkStatus("Your account must have access to this project, or the link must include a valid sharing token.");
+    openModal(openSharedProjectModal);
+    window.setTimeout(() => input?.focus(), 40);
+}
+
+function openPastedSharedProject() {
+    const input = document.getElementById("sharedProjectLinkInput");
+    const button = document.getElementById("openSharedProjectSubmit");
+    let details;
+    try {
+        details = parseSharedProjectLink(input?.value);
+    } catch (error) {
+        setSharedLinkStatus(error.message || "Could not read this sharing link.", "error");
+        input?.focus();
+        return;
+    }
+
+    // Build a destination using THIS app's current host/path. This avoids opening
+    // the other person's localhost port (e.g. 5500 vs 5501) or external browser.
+    const editorURL = new URL("editor.html", window.location.href);
+    editorURL.searchParams.set("projectId", details.projectId);
+    if (details.shareToken) editorURL.searchParams.set("shareToken", details.shareToken);
+    if (details.storyId) editorURL.searchParams.set("storyId", details.storyId);
+
+    setSharedLinkStatus("Opening the project in this Papercut workspace…", "success");
+    if (button) { button.disabled = true; button.textContent = "Opening…"; }
+    window.location.assign(editorURL.href);
+}
+
+/* ==========================================
    15. EVENT LISTENERS
 ========================================== */
 
@@ -1243,6 +1310,12 @@ document.getElementById("refreshBtn").addEventListener(
     "click",
     loadProjects
 );
+
+document.getElementById("openSharedProjectBtn")?.addEventListener("click", openSharedProjectDialog);
+document.getElementById("openSharedProjectSubmit")?.addEventListener("click", openPastedSharedProject);
+document.getElementById("sharedProjectLinkInput")?.addEventListener("keydown", event => {
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") openPastedSharedProject();
+});
 
 // Logout clears the custom Papercut session keys and returns to the home page.
 document.getElementById("logoutBtn")?.addEventListener("click", () => {
