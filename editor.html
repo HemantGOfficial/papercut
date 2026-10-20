@@ -1,0 +1,163 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset=utf8>
+  <meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <style>
+    
+  </style>
+</head>
+
+<body>
+  <title>PaperCut - Editor</title>
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Courier+Prime:ital,wght@0,400;0,700;1,400&family=Hanken+Grotesk:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="/papercut/static/editor.css">
+  <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
+
+  <div id="app">
+    <header class="top">
+      <div class="brand">
+        <span id="brand-logo"><img src="PaperCut.png" height="37px" width="37px" alt=""></span>
+        <span style="font-family: 'Oswald', sans-serif; cursor: pointer;" onclick="window.location.href='/papercut/projects.html'">PAPERCUT</span>
+      </div>
+      <input id="title" class="title" type="text" placeholder="Script title" aria-label="Script title"
+        autocomplete="off">
+      <div class="acts">
+        <button id="scenesBtn" class="btn" type="button">Scenes</button>
+        <button id="storyPageBtn" class="btn" type="button" onclick="location.href='/papercut/story.html'">Story planner</button>
+        <button id="shareProjectBtn" class="btn" type="button" title="Manage project access">Share</button>
+        <div class="zoom-controls" aria-label="Editor zoom"><button class="btn" id="zoomOut" type="button" title="Zoom out">−</button><span id="zoomLabel">100%</span><button class="btn" id="zoomIn" type="button" title="Zoom in">+</button><button class="btn" id="zoomReset" type="button" title="Reset zoom">Reset</button></div>
+        <div id="exportMenu" class="menu">
+          <button id="exportBtn" class="btn primary" type="button" aria-haspopup="true" aria-expanded="false">Export
+            ▾</button>
+          <div id="exportList" class="menu-list" role="menu" hidden>
+            <button id="pdfbtn" class="menu-item" type="button" role="menuitem">PDF<small>Print-ready pages</small></button>
+            <button id="exdocx" class="menu-item" type="button" role="menuitem">Word (.docx)<small>Opens in MS
+                Word</small></button>
+            <button id="exfdx" class="menu-item" type="button" role="menuitem">Final Draft (.fdx)<small>Opens in Final
+                Draft</small></button>
+            <button id="exfountain" class="menu-item" type="button" role="menuitem">Fountain (.fountain)<small>Plain
+                text, with scene notes</small></button>
+          </div>
+        </div>
+        <button id="fbtn" class="btn" type="button">Fountain text</button>
+        <button id="newbtn" class="btn" type="button">New script</button>
+        <button id="theme" class="btn icon" type="button" aria-label="Switch light or dark theme" title="Switch theme">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
+            aria-hidden="true">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 3v18a9 9 0 0 0 0-18z" fill="currentColor" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <div id="types" class="types" role="toolbar" aria-label="Line type"></div>
+
+    <div class="work">
+      <aside id="side" class="side" aria-label="Scene navigator">
+        <div class="scene-group-tools"><h2>Scenes</h2><button class="btn" id="createSceneGroup" type="button">+ Group</button></div>
+        <div class="scene-group-form" id="sceneGroupForm" hidden>
+          <label>Folder name<input id="sceneGroupName" type="text" placeholder="e.g. The escape"></label>
+          <div class="scene-group-actions"><button class="btn primary" id="saveSceneGroup" type="button">Create folder</button><button class="btn" id="cancelSceneGroup" type="button">Cancel</button></div>
+        </div>
+        <div id="sceneGroups"></div><div id="nav"></div>
+      </aside>
+      <main id="desk" class="desk">
+        <div class="paper">
+          <div id="pages" class="pages"></div>
+          <div id="paper" class="flow" role="textbox" aria-multiline="true" aria-label="Screenplay"></div>
+        </div>
+      </main>
+      <aside id="inspector" class="inspector" aria-label="Script inspector">
+        <div class="right-tabs" role="tablist" aria-label="Right panel">
+          <button class="right-tab active" type="button" data-right-tab="inspector" role="tab" aria-selected="true">Inspector</button>
+          <button class="right-tab" type="button" data-right-tab="story" role="tab" aria-selected="false">Story</button>
+          <button class="right-tab" type="button" data-right-tab="beats" role="tab" aria-selected="false">Story Beats</button>
+        </div>
+        <section class="right-panel active" data-right-panel="inspector">
+        <h2>Inspector</h2>
+        <div class="metric"><span>Selected element</span><strong id="inspectType"
+            style="font-size:15px">Action</strong><span id="inspectLength">0 characters</span></div>
+        <h3>Scene notes</h3>
+        <div class="note-card">
+          <span id="noteScene" class="note-scene">Place the cursor inside a scene</span>
+          <textarea id="sceneNote" class="note-area" rows="5" disabled
+            placeholder="Write what happens in this scene: who is in it, what changes, what it sets up. The note shows under the scene in the Scenes list."
+            aria-label="Scene note"></textarea>
+        </div>
+        <h3>Script statistics</h3>
+        <div class="metric-grid">
+          <div class="metric"><span>Total characters</span><strong id="totalChars">0</strong></div>
+          <div class="metric"><span>Dialogues</span><strong id="totalDialogues">0</strong></div>
+          <div class="metric"><span>Characters</span><strong id="totalCast">0</strong></div>
+          <div class="metric"><span>Words</span><strong id="totalWords">0</strong></div>
+        </div>
+        <label class="inspector-label" for="characterFilter">Dialogue count for</label>
+        <select id="characterFilter">
+          <option value="__all">All characters</option>
+        </select>
+        <div class="metric" style="margin-top:7px"><span>Dialogue blocks for selection</span><strong
+            id="filteredDialogues">0</strong></div>
+        <details class="char-menu" id="characterMenu">
+          <summary id="characterMenuLabel">Show / hide character lists</summary>
+          <div class="char-options" id="characterOptions"></div>
+        </details>
+        <h3>Characters — whole script</h3>
+        <div id="allCharacters" class="character-list">
+          <p class="muted">No characters yet.</p>
+        </div>
+        <h3>Characters — current scene</h3>
+        <div id="sceneCharacters" class="character-list">
+          <p class="muted">Select a scene to inspect its cast.</p>
+        </div>
+        </section>
+        <section class="right-panel" data-right-panel="story" hidden>
+          <div class="story-panel-head"><h2>Story</h2><a href="/papercut/story.html" class="mini-link">Open planner ↗</a></div>
+          <p class="muted">Only the story linked to this screenplay appears here.</p><div class="editor-link-story"><select id="linkStorySelect" aria-label="Choose a story to link"><option value="">Choose a story to link…</option></select><button id="linkStoryBtn" class="btn" type="button">Link story</button></div>
+          <div id="editorStorySections" class="editor-story-sections"><p class="muted">No story linked yet. Open Story Planner to create one.</p></div>
+          <label class="inspector-label" for="editorStoryQuickEdit">Quick edit selected act</label>
+          <textarea id="editorStoryQuickEdit" class="note-area" rows="6" placeholder="Select an act above, then edit its story here…"></textarea>
+          <button id="saveEditorStory" class="btn primary" type="button">Save story changes</button>
+        </section>
+        <section class="right-panel" data-right-panel="beats" hidden>
+          <h2>Plot Hierarchy</h2><p class="muted">Parent/child tree from the linked story: sequences, montages, scenes, story beats, and microbeats.</p><div class="editor-link-story"><select id="linkStorySelectBeats" aria-label="Choose a story to link for beats"><option value="">Choose a story to link…</option></select><button id="linkStoryBtnBeats" class="btn" type="button">Link story</button></div>
+          <div id="editorBeatList" class="editor-beat-list"><p class="muted">No beats yet. Add them in Story Planner.</p></div>
+          <div class="beat-scene-link"><strong>Current screenplay scene</strong><p id="editorCurrentScene" class="muted">Select a scene in the script.</p></div>
+        </section>
+      </aside>
+    </div>
+
+    <footer class="status">
+      <span><b id="pg">1</b> pages</span>
+      <span>about <b id="mn">1</b> min on screen</span>
+      <span><b id="wd">0</b> words</span>
+      <span><b id="sn">0</b> scenes</span>
+      <span class="r" id="saved">Saved</span>
+    </footer>
+  </div>
+
+  <div id="sheet" class="sheet" hidden>
+    <div class="card" role="dialog" aria-modal="true" aria-labelledby="sheetH">
+      <h3 id="sheetH">Fountain text</h3>
+      <p>Copy your script as plain Fountain text, or paste Fountain text here and load it into the editor. Loading
+        replaces the current script (you can undo it). A line starting with ! is action, an ALL CAPS line is a
+        character, the line right under it is dialogue, and [[text]] under a scene heading is that scene's note.</p>
+      <textarea id="fta" spellcheck="false" aria-label="Fountain text"></textarea>
+      <div class="row">
+        <button id="fclose" class="btn" type="button">Close</button>
+        <button id="fload" class="btn" type="button">Load into editor</button>
+        <button id="fcopy" class="btn primary" type="button">Copy</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="/papercut/static/js/editor.js"></script>
+  <script type="module" src="/papercut/static/js/editor-cloud.js"></script>
+
+</body>
+
+</html>
