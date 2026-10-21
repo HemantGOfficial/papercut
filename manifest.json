@@ -1,0 +1,10 @@
+{
+  "name": "Papercut",
+  "short_name": "Papercut",
+  "description": "Papercut is a professional screenplay writing application for creating, managing, and editing screenplays.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#101014",
+  "theme_color": "#101014"
+}
