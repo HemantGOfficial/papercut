@@ -43,7 +43,6 @@
           <div>
             <div class="eyebrow"><span></span> YOUR WRITING WORKSPACE</div>
             <h1><span id="username-space">Your</span> Projects</h1>
-            <h4 id="email-space">Email</h4>
             <p class="page-description">Manage screenplays and story plans from one place.</p>
           </div><button class="primary-btn" id="newProjectBtn"><span class="plus-icon">＋</span> New project</button>
         </section>
@@ -102,11 +101,12 @@
     <form class="modal" id="newProjectForm"><button type="button" class="modal-close"
         data-close="newProjectModal">×</button><span class="eyebrow">START SOMETHING NEW</span>
       <h2>Create a <span>project</span></h2>
-      <p class="page-description">Choose what you want to work on. Linking is optional.</p><label
+      <p class="page-description">Choose a project type. Pre-Production requires a linked screenplay.</p><label
         for="projectTitle">Project title</label><input id="projectTitle" required maxlength="140"
         placeholder="Untitled project"><label for="projectType">Project type</label><select id="projectType">
         <option value="screenplay">Screenplay</option>
         <option value="story">Story plan</option>
+        <option value="pre-production">Pre-Production</option>
       </select>
       <div id="connectStoryWrap"><label for="connectStorySelect">Connect a story (optional)</label><select
           id="connectStorySelect">
@@ -217,7 +217,7 @@
 
   <div id="toast" class="toast"></div>
   <script type="module" src="/papercut/static/js/projects.js"></script>
-  <script>document.getElementById('projectType').addEventListener('change', e => { document.getElementById('connectStoryWrap').hidden = e.target.value === 'story'; document.getElementById('connectScreenplayWrap').hidden = e.target.value !== 'story' });</script>
+  <script>document.getElementById('projectType').addEventListener('change', e => { document.getElementById('connectStoryWrap').hidden = e.target.value === 'story' || e.target.value === 'pre-production'; document.getElementById('connectScreenplayWrap').hidden = !(e.target.value === 'story' || e.target.value === 'pre-production'); document.getElementById('screenplayRequiredLabel').textContent = e.target.value === 'pre-production' ? '(required)' : '(optional)'; document.getElementById('connectScreenplaySelect').required = e.target.value === 'pre-production' });</script>
 </body>
 
 </html>

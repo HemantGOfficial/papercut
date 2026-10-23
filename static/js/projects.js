@@ -153,7 +153,6 @@ async function loadCurrentUser() {
         // Individual variables.
         // console.log(currentUserId, username, email, createdAt);
         document.getElementById('username-space').innerHTML = username + "'s";
-        document.getElementById('email-space').innerHTML = email;
 
         return {
             userId: currentUserId,
@@ -384,6 +383,35 @@ async function loadProjects() {
         });
         allProjects = allProjects.concat(storyProjects);
 
+        // Pre-Production projects are stored in their own collection and appear
+        // alongside screenplays and story plans in this same library.
+        const preProductionDocs = new Map();
+        for (const field of ["ownerId", "userId"]) {
+            try {
+                const snapshot = await getDocs(query(collection(db, "preProductionProjects"), where(field, "==", currentUserId)));
+                snapshot.docs.forEach(d => preProductionDocs.set(d.id, d));
+            } catch (queryError) {
+                console.warn("Pre-Production query by " + field + " was not available.", queryError);
+            }
+        }
+        const preProductionProjects = [...preProductionDocs.values()]
+            .map(d => {
+                const data = d.data();
+                return {
+                    ...data,
+                    id: d.id,
+                    sourceCollection: "preProductionProjects",
+                    type: "pre-production",
+                    title: String(data.projectTitle || data.title || "Untitled Pre-Production").trim(),
+                    content: "",
+                    ownerId: data.ownerId || data.userId || "",
+                    linkedScreenplayId: data.screenplayId || "",
+                    linkedScreenplayTitle: data.screenplayTitle || ""
+                };
+            })
+            .filter(p => p.ownerId === currentUserId);
+        allProjects = allProjects.concat(preProductionProjects);
+
         if (connectStorySelect) {
             connectStorySelect.replaceChildren(new Option("No story connected", ""));
             storyDocuments.forEach(d => {
@@ -398,7 +426,7 @@ async function loadProjects() {
         }
         if (connectScreenplaySelect) {
             connectScreenplaySelect.replaceChildren(new Option("No screenplay connected", ""));
-            allProjects.filter(p => (p.type || "screenplay") !== "story").forEach(p => connectScreenplaySelect.add(new Option(p.title || "Untitled screenplay", p.id)));
+            allProjects.filter(p => (p.type || "screenplay") === "screenplay" && p.sourceCollection === "projects").forEach(p => connectScreenplaySelect.add(new Option(p.title || "Untitled screenplay", p.id)));
         }
         // Project collections are stored independently so an empty group still exists.
         const groupDocs = new Map();
@@ -502,7 +530,8 @@ function renderProjectCards(projects, targetGrid, indexOffset = 0) {
         card.className = "project-card";
         card.style.animationDelay = `${Math.min((index + indexOffset) * 35, 250)}ms`;
         const title = escapeHTML(project.title || "Untitled Project");
-        const type = escapeHTML((project.type || "Screenplay").toLowerCase() === "story" ? "Story Plan" : "Screenplay");
+        const projectType = String(project.type || "screenplay").toLowerCase();
+        const type = escapeHTML(projectType === "story" ? "Story Plan" : projectType === "pre-production" ? "Pre-Production" : "Screenplay");
         const preview = escapeHTML(getPreview(project.content || ""));
         const updatedDate = escapeHTML(formatDate(project.updatedAt));
         const wordCount = getWordCount(project.content || "");
@@ -521,7 +550,7 @@ function renderProjectCards(projects, targetGrid, indexOffset = 0) {
                         <div class="card-menu hidden">
                             <button type="button" data-action="open" data-id="${escapeHTML(project.id)}">Open project ↗</button>
                             <button type="button" data-action="move-group" data-id="${escapeHTML(project.id)}">${group ? "Move / ungroup…" : "Add to group…"}</button>
-                            ${(project.type || "screenplay").toLowerCase() !== "story" && project.sourceCollection !== "stories" ? `<button type="button" data-action="share" data-id="${escapeHTML(project.id)}">Share access…</button>` : ""}
+                            ${(project.type || "screenplay").toLowerCase() !== "story" && project.type !== "pre-production" && project.sourceCollection !== "stories" ? `<button type="button" data-action="share" data-id="${escapeHTML(project.id)}">Share access…</button>` : ""}
                             <button type="button" class="menu-delete" data-action="delete" data-id="${escapeHTML(project.id)}">Delete project</button>
                         </div>
                     </div>
@@ -737,6 +766,13 @@ function openProject(projectId) {
         return;
     }
 
+    if ((project.type || "screenplay").toLowerCase() === "pre-production" || project.sourceCollection === "preProductionProjects") {
+        const preProductionURL = new URL("pre-production.html", window.location.href);
+        preProductionURL.searchParams.set("projectId", projectId);
+        window.location.href = preProductionURL.href;
+        return;
+    }
+
     if ((project.type || "screenplay").toLowerCase() === "story") {
         window.location.href = new URL(project.sourceCollection === "projects" ? "story.html?projectId=" + encodeURIComponent(projectId) + "&source=projects" : "story.html?storyId=" + encodeURIComponent(project.storyId || projectId), window.location.href).href;
         return;
@@ -777,6 +813,45 @@ async function createNewProject(event) {
     setButtonLoading(submitButton, true, "Creating...");
 
     try {
+        if (type === "pre-production") {
+            const screenplayId = connectScreenplaySelect?.value || "";
+            if (!screenplayId) {
+                showToast("Pre-Production ke liye screenplay link karna required hai.");
+                return;
+            }
+            const screenplay = allProjects.find(p => p.id === screenplayId && p.sourceCollection === "projects" && (p.type || "screenplay") === "screenplay");
+            if (!screenplay) {
+                showToast("Please select a valid screenplay from your projects.");
+                return;
+            }
+            const preProductionRef = doc(collection(db, "preProductionProjects"));
+            const preProductionData = {
+                ownerId: currentUserId,
+                userId: currentUserId,
+                projectId: preProductionRef.id,
+                projectTitle: title,
+                title,
+                projectType: "pre-production",
+                screenplayId: screenplay.id,
+                screenplayTitle: screenplay.title || "Untitled screenplay",
+                data: { breakdown: [], locations: [], schedule: [], logs: [], props: [], shots: [], callsheet: { shootDate: "", productionDay: "1", generalCall: "07:00", wrapTime: "", locationName: "", address: "", weather: "", scenes: "", castCrew: "", notes: "" } },
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+                groupId: "",
+                groupName: ""
+            };
+            await setDoc(preProductionRef, preProductionData);
+            allProjects.push({ ...preProductionData, id: preProductionRef.id, sourceCollection: "preProductionProjects", type: "pre-production", content: "" });
+            closeModal(newProjectModal);
+            updateStatistics();
+            renderProjects();
+            showToast("Pre-Production project created. Opening it…");
+            const preProductionURL = new URL("pre-production.html", window.location.href);
+            preProductionURL.searchParams.set("projectId", preProductionRef.id);
+            window.location.href = preProductionURL.href;
+            return;
+        }
+
         if (type === "story") {
             const storyData = { ownerId: currentUserId, title, logline: "", synopsis: "", acts: [{id: crypto.randomUUID(), title: "Act 1", story: ""}, {id: crypto.randomUUID(), title: "Act 2", story: ""}, {id: crypto.randomUUID(), title: "Act 3", story: ""}], plotItems: [], connectedScreenplayId: connectScreenplaySelect?.value || "", groupId: "", groupName: "", createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
             const storyRef = await addDoc(collection(db, "stories"), storyData);
@@ -841,14 +916,15 @@ async function confirmDeleteProject() {
          * replacement for secure Firestore rules.
          */
         const project = allProjects.find(item => item.id === projectId);
-        const projectReference = doc(db, project?.sourceCollection === "stories" ? "stories" : "projects", projectId);
+        const collectionName = project?.sourceCollection === "stories" ? "stories" : project?.sourceCollection === "preProductionProjects" ? "preProductionProjects" : "projects";
+        const projectReference = doc(db, collectionName, projectId);
         const snapshot = await getDoc(projectReference);
 
         if (!snapshot.exists()) {
             throw new Error("Project no longer exists.");
         }
 
-        if (snapshot.data().ownerId !== currentUserId) {
+        if ((snapshot.data().ownerId || snapshot.data().userId) !== currentUserId) {
             throw new Error("This project does not belong to this user.");
         }
 
