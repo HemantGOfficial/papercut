@@ -11,7 +11,7 @@ const firebaseConfig = {
 };
 const db = getFirestore(initializeApp(firebaseConfig));
 const params = new URLSearchParams(location.search);
-const projectId = params.get('projectId');
+const projectId = (params.get('projectId') || params.get('id'));
 const incomingShareToken = params.get('shareToken') || '';
 const userId = localStorage.getItem('userId') || localStorage.getItem('papercutUserId') || '';
 const $ = id => document.getElementById(id);
@@ -120,7 +120,7 @@ async function linkStoryFrom(selectId) {
 async function bootCloudEditor() {
   if (!projectId) {
     alert('Open a screenplay from Projects or use a valid shared link.');
-    location.replace('projects.html');
+    location.replace('../projects/');
     return;
   }
   try {
@@ -128,7 +128,7 @@ async function bootCloudEditor() {
     const snap = await getDoc(doc(db, 'projects', projectId));
     if (!snap.exists()) {
       alert('This screenplay project does not exist.');
-      location.replace('projects.html');
+      location.replace('../projects/');
       return;
     }
     project = { id: snap.id, ...snap.data() };
@@ -136,12 +136,12 @@ async function bootCloudEditor() {
     canEditProject = projectAccessAllowed(project);
     if (!canEditProject) {
       alert('Access denied. Ask the owner to add your Papercut account or share a valid access link.');
-      location.replace(userId ? 'projects.html' : 'login.html');
+      location.replace(userId ? '../projects/' : '../../login/');
       return;
     }
     if ((project.type || 'screenplay').toLowerCase() === 'story') {
       alert('This is a story plan, not a screenplay. Open it from Projects.');
-      location.replace('projects.html');
+      location.replace('../projects/');
       return;
     }
     window.dispatchEvent(new CustomEvent('papercut:load-cloud-project', {
@@ -151,11 +151,11 @@ async function bootCloudEditor() {
     if (isProjectOwner) await loadLinkedStory();
     else { linkedStory = null; showStory(null); }
     const shareButton = $('shareProjectBtn');
-    if (shareButton) { shareButton.onclick = () => { if (!isProjectOwner) { alert('Only the project owner can change sharing settings.'); return; } location.href = `projects.html?shareProjectId=${encodeURIComponent(projectId)}`; }; shareButton.hidden = !isProjectOwner; }
+    if (shareButton) { shareButton.onclick = () => { if (!isProjectOwner) { alert('Only the project owner can change sharing settings.'); return; } location.href = `../projects/?shareProjectId=${encodeURIComponent(projectId)}`; }; shareButton.hidden = !isProjectOwner; }
     const plannerButton = $('storyPageBtn');
     if (plannerButton) plannerButton.onclick = () => {
       if (!isProjectOwner) { alert('Only the screenplay owner can open or link its private Story Planner.'); return; }
-      location.href = project.linkedStoryId ? `story.html?storyId=${encodeURIComponent(project.linkedStoryId)}` : 'story.html';
+      location.href = project.linkedStoryId ? `../story/?storyId=${encodeURIComponent(project.linkedStoryId)}` : '../story/';
     };
     status(isProjectOwner ? 'Loaded from Firestore · Owner' : 'Shared project · Changes sync to owner');
     if (!isProjectOwner) {

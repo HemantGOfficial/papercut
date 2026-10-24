@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#111117">
+    <title>PaperCut - Create Account</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="shortcut icon" href="/papercut/favicon.ico" type="image/x-icon">
+    <link
+        href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Oswald:wght@400;500;600&display=swap"
+        rel="stylesheet">
+
+    <link rel="stylesheet" href="/papercut/static/signup.css">
+    <script type="module" src="/papercut/static/js/signup.js"></script>
+</head>
+
+<body>
+    <main class="signup-layout">
+
+        <section class="cinema-panel">
+            <header class="brand">
+                <div class="brand-mark"><img src="/papercut/PaperCut.png" alt=""></div>
+                <span class="brand-name">PAPERCUT</span>
+            </header>
+
+            <div class="cinema-content">
+                <div class="eyebrow">
+                    <span class="eyebrow-line"></span>
+                    YOUR STORY STARTS HERE
+                </div>
+
+                <h1>Every great film<br>begins with a <span>page.</span></h1>
+
+                <p class="cinema-description">
+                    Your ideas. Your characters. Your next masterpiece.
+                    A dedicated space for the stories only you can tell.
+                </p>
+
+                <div class="script-preview">
+                    <div class="script-toolbar">
+                        <div class="window-dots">
+                            <span></span><span></span><span></span>
+                        </div>
+                        <span>UNTITLED_SCREENPLAY.fountain</span>
+                        <span class="preview-status">DRAFT</span>
+                    </div>
+
+                    <div class="script-page">
+                        <p class="scene-heading">INT. WRITER'S ROOM — NIGHT</p>
+                        <p class="action-text">
+                            A blank page. A blinking cursor. A thousand
+                            stories waiting to be told.
+                        </p>
+                        <p class="character-name">WRITER</p>
+                        <p class="dialogue-text">
+                            What if this is where everything begins?
+                        </p>
+                        <p class="action-text">
+                            The cursor blinks. The writer starts typing.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <footer class="cinema-footer">
+                <span>MADE FOR STORYTELLERS.</span>
+                <span>WRITE YOUR WORLD.</span>
+            </footer>
+        </section>
+
+        <section class="form-panel">
+            <div class="form-top">
+                <a href="/papercut/" class="back-link">
+                    <span>←</span> Back to home
+                </a>
+                <span class="form-counter">01 <span>/</span> ACCOUNT</span>
+            </div>
+
+            <div class="form-container">
+                <div class="mobile-brand">
+                    <div class="brand-mark">P<span>.</span></div>
+                    <span class="brand-name">PAPERCUT</span>
+                </div>
+
+                <div class="form-heading">
+                    <div class="form-icon">✳</div>
+                    <h2>Create your account<span>.</span></h2>
+                    <p>Your next story deserves a home.</p>
+                </div>
+
+                <form id="signupForm" novalidate>
+                    <div class="field">
+                        <label for="username">USERNAME</label>
+                        <div class="input-wrap">
+                            <span class="input-icon">@</span>
+                            <input type="text" id="username" name="username" placeholder="Choose a username"
+                                minlength="3" maxlength="24" autocomplete="username" required>
+                        </div>
+                        <small class="field-error" id="usernameError"></small>
+                    </div>
+
+                    <div class="field">
+                        <label for="email">EMAIL ADDRESS</label>
+                        <div class="input-wrap">
+                            <svg class="input-svg" viewBox="0 0 24 24" aria-hidden="true">
+                                <rect x="3" y="5" width="18" height="14" rx="3"></rect>
+                                <path d="m4 7 8 6 8-6"></path>
+                            </svg>
+                            <input type="email" id="email" name="email" placeholder="you@example.com"
+                                autocomplete="email" required>
+                        </div>
+                        <small class="field-error" id="emailError"></small>
+                    </div>
+
+                    <div class="field">
+                        <label for="password">PASSWORD</label>
+                        <div class="input-wrap">
+                            <svg class="input-svg" viewBox="0 0 24 24" aria-hidden="true">
+                                <rect x="4" y="10" width="16" height="11" rx="2"></rect>
+                                <path d="M8 10V7a4 4 0 0 1 8 0v3"></path>
+                            </svg>
+                            <input type="password" id="password" name="password" placeholder="Create a strong password"
+                                minlength="8" autocomplete="new-password" required>
+                            <button type="button" class="password-toggle" data-target="password"
+                                aria-label="Show password">SHOW</button>
+                        </div>
+
+                        <div class="strength-track">
+                            <span id="strengthBar"></span>
+                        </div>
+                        <small id="strengthText" class="strength-text">At least 8 characters</small>
+                        <small class="field-error" id="passwordError"></small>
+                    </div>
+
+                    <div class="field">
+                        <label for="confirmPassword">CONFIRM PASSWORD</label>
+                        <div class="input-wrap">
+                            <svg class="input-svg" viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="m5 12 4 4L19 6"></path>
+                            </svg>
+                            <input type="password" id="confirmPassword" name="confirmPassword"
+                                placeholder="Enter your password again" autocomplete="new-password" required>
+                            <button type="button" class="password-toggle" data-target="confirmPassword"
+                                aria-label="Show confirmation password">SHOW</button>
+                        </div>
+                        <small class="field-error" id="confirmPasswordError"></small>
+                    </div>
+
+                    <label class="terms-row">
+                        <input type="checkbox" id="terms">
+                        <span class="custom-checkbox"></span>
+                        <span>I agree to the <a href="#" class="terms-link">Terms of Service</a> and <a href="#"
+                                class="terms-link">Privacy Policy</a>.</span>
+                    </label>
+                    <small class="field-error" id="termsError"></small>
+
+                    <button type="submit" class="submit-button" id="submitButton">
+                        <span>Create account</span>
+                        <span class="button-arrow">↗</span>
+                    </button>
+
+                    <div id="formMessage" class="form-message" role="status" aria-live="polite"></div>
+                </form>
+
+                <div class="form-divider"><span>YOUR CREATIVE SPACE</span></div>
+
+                <p class="login-prompt">
+                    Already have an account?
+                    <a href="/papercut/login/">Sign in <span>↗</span></a>
+                </p>
+
+                <p class="privacy-note">
+                    <span>✳</span> Your stories should belong to you.
+                </p>
+            </div>
+
+            <footer class="form-footer">
+                © 2026 PAPERCUT STUDIO
+                <span>BUILT FOR THE BIG SCREEN.</span>
+            </footer>
+        </section>
+
+    </main>
+</body>
+<script>
+    let userId = localStorage.getItem('userId')
+    if (userId) {
+        window.location.href = "/papercut/workspace/projects/";
+    }
+</script>
+
+</html>

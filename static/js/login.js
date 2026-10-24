@@ -238,7 +238,7 @@ loginForm.addEventListener("submit", async function (event) {
         // Prototype session only; not secure authentication.
 
         localStorage.setItem("userId", userData.userId)
-        window.location.href = "/papercut/projects.html"
+        window.location.href = "../workspace/projects/"
 
         // Temporary: verify login before adding your home-page redirect.
     } catch (error) {

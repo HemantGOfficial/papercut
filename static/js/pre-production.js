@@ -228,7 +228,7 @@
   async function restore() {
     state.userId = getUserId();
     const params = new URLSearchParams(window.location.search);
-    const projectId = (params.get("projectId") || "").trim();
+    const projectId = (params.get("projectId") || params.get("id") || "").trim();
 
     if (!projectId) {
       denyPreProductionAccess("No project ID was provided. Open Pre-Production from the Papercut Projects page.");
@@ -279,7 +279,7 @@
   }
 
   function denyPreProductionAccess(message) {
-    document.body.innerHTML = `<main style="min-height:100vh;display:grid;place-items:center;padding:32px;background:#101014;color:#f5f2fa;font:16px/1.6 system-ui,sans-serif"><section style="max-width:560px;text-align:center"><h1 style="font-size:28px">Workspace unavailable</h1><p>${esc(message)}</p><a href="/papercut/projects.html" style="display:inline-block;margin-top:16px;padding:11px 18px;border-radius:8px;background:#d7b8ff;color:#20142b;text-decoration:none;font-weight:700">Back to Projects</a></section></main>`;
+    document.body.innerHTML = `<main style="min-height:100vh;display:grid;place-items:center;padding:32px;background:#101014;color:#f5f2fa;font:16px/1.6 system-ui,sans-serif"><section style="max-width:560px;text-align:center"><h1 style="font-size:28px">Workspace unavailable</h1><p>${esc(message)}</p><a href="../projects/" style="display:inline-block;margin-top:16px;padding:11px 18px;border-radius:8px;background:#d7b8ff;color:#20142b;text-decoration:none;font-weight:700">Back to Projects</a></section></main>`;
   }
     function parseScenes(text) { const lines = String(text || "").replace(/\r/g, "").split("\n"), out = []; let cur = null, action = []; const flush = () => { if (cur) { cur.description = ""; out.push(cur) } action = [] }; for (let i = 0; i < lines.length; i++) { const line = lines[i].trim(); if (/^(INT\.?|EXT\.?|INT\.\/EXT\.?|EXT\.\/INT\.?|I\.E\.)\s+/i.test(line)) { flush(); const m = line.match(/^(INT\.?\/EXT\.?|EXT\.?\/INT\.?|INT\.?|EXT\.?|I\.E\.)\s+(.+?)(?:\s+-\s+|\s+)(DAY|NIGHT|DAWN|DUSK|MORNING|EVENING|CONTINUOUS|LATER|MOMENTS LATER|SAME)(?:\s*#.*)?$/i); let heading = line.replace(/^\.+/, ""); let intExt = "", location = heading, time = "UNKNOWN"; const tm = heading.match(/\s*(?:-\s*|\s+)(DAY|NIGHT|DAWN|DUSK|MORNING|EVENING|CONTINUOUS|LATER|MOMENTS\s+LATER|SAME)\s*$/i); if (tm) { time = tm[1].toUpperCase().replace(/\s+/g, " "); location = heading.slice(0, tm.index).trim() } const im = location.match(/^(INT\.?\/EXT\.?|EXT\.?\/INT\.?|INT\.?|EXT\.?|I\.E\.)\s*/i); if (im) { intExt = im[1].toUpperCase().replace(/\./g, ""); location = location.slice(im[0].length).trim() } cur = { scene: String(out.length + 1).padStart(2, "0"), heading, intExt, time, location, description: "", characters: [], props: [] }; continue } if (!cur) continue; if (!line) continue; if (/^[A-Z][A-Z0-9 .()'’-]{1,35}$/.test(line) && !/^FADE|^CUT|^DISSOLVE|^CONTINUED/.test(line)) { const name = line.replace(/\s*\(.*\)$/, "").trim(); if (!cur.characters.includes(name)) cur.characters.push(name); continue }/* Scene description is intentionally not extracted from screenplay text. */ } flush(); return out.map((x, i) => ({ ...x, scene: String(i + 1).padStart(2, "0") })) }
   function extractScenes() { state.scenes = parseScenes(state.screenplay?.content || ""); if (state.project) state.project.screenplayId = state.screenplay?.id || state.project.screenplayId; }

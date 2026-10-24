@@ -752,7 +752,7 @@ async function deleteProjectGroup(groupId) {
    10. OPEN A PROJECT IN THE EDITOR
 
    Editor URL expected:
-   editor.html?projectId=FIRESTORE_DOCUMENT_ID
+   ../editor/?projectId=FIRESTORE_DOCUMENT_ID
 
    Your editor must read this parameter and load
    that document before this feature is complete.
@@ -767,17 +767,17 @@ function openProject(projectId) {
     }
 
     if ((project.type || "screenplay").toLowerCase() === "pre-production" || project.sourceCollection === "preProductionProjects") {
-        const preProductionURL = new URL("pre-production.html", window.location.href);
+        const preProductionURL = new URL("../pre-production/", window.location.href);
         preProductionURL.searchParams.set("projectId", projectId);
         window.location.href = preProductionURL.href;
         return;
     }
 
     if ((project.type || "screenplay").toLowerCase() === "story") {
-        window.location.href = new URL(project.sourceCollection === "projects" ? "story.html?projectId=" + encodeURIComponent(projectId) + "&source=projects" : "story.html?storyId=" + encodeURIComponent(project.storyId || projectId), window.location.href).href;
+        window.location.href = new URL(project.sourceCollection === "projects" ? "../story/?projectId=" + encodeURIComponent(projectId) + "&source=projects" : "../story/?storyId=" + encodeURIComponent(project.storyId || projectId), window.location.href).href;
         return;
     }
-    const editorURL = new URL("editor.html", window.location.href);
+    const editorURL = new URL("../editor/", window.location.href);
     editorURL.searchParams.set("projectId", projectId);
     if (project.linkedStoryId) editorURL.searchParams.set("storyId", project.linkedStoryId);
     window.location.href = editorURL.href;
@@ -846,7 +846,7 @@ async function createNewProject(event) {
             updateStatistics();
             renderProjects();
             showToast("Pre-Production project created. Opening it…");
-            const preProductionURL = new URL("pre-production.html", window.location.href);
+            const preProductionURL = new URL("../pre-production/", window.location.href);
             preProductionURL.searchParams.set("projectId", preProductionRef.id);
             window.location.href = preProductionURL.href;
             return;
@@ -856,14 +856,14 @@ async function createNewProject(event) {
             const storyData = { ownerId: currentUserId, title, logline: "", synopsis: "", acts: [{id: crypto.randomUUID(), title: "Act 1", story: ""}, {id: crypto.randomUUID(), title: "Act 2", story: ""}, {id: crypto.randomUUID(), title: "Act 3", story: ""}], plotItems: [], connectedScreenplayId: connectScreenplaySelect?.value || "", groupId: "", groupName: "", createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
             const storyRef = await addDoc(collection(db, "stories"), storyData);
             closeModal(newProjectModal);
-            window.location.href = new URL("story.html?storyId=" + encodeURIComponent(storyRef.id), window.location.href).href;
+            window.location.href = new URL("../story/?storyId=" + encodeURIComponent(storyRef.id), window.location.href).href;
             return;
         }
         const newProject = { ownerId: currentUserId, title, type: "screenplay", content: "FADE IN:\n\n", linkedStoryId: connectStorySelect?.value || "", groupId: "", groupName: "", createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
         const documentReference = await addDoc(collection(db, "projects"), newProject);
         closeModal(newProjectModal);
         showToast("Screenplay created. Opening your editor...");
-        const editorURL = new URL("editor.html", window.location.href);
+        const editorURL = new URL("../editor/", window.location.href);
         editorURL.searchParams.set("projectId", documentReference.id);
         if (newProject.linkedStoryId) editorURL.searchParams.set("storyId", newProject.linkedStoryId);
         window.location.href = editorURL.href;
@@ -974,7 +974,7 @@ function makeShareToken() {
 function buildShareURL(project, mode = shareModeValue(), token = project?.shareToken || "") {
     // Keep the current app path but use the active origin. This allows testing on another
     // Live Server port as long as that port serves the same Papercut folder structure.
-    const shareURL = new URL("editor.html", window.location.href);
+    const shareURL = new URL("../editor/", window.location.href);
     shareURL.searchParams.set("projectId", project.id);
     if (project.linkedStoryId) shareURL.searchParams.set("storyId", project.linkedStoryId);
     if (mode === "link" && token) shareURL.searchParams.set("shareToken", token);
@@ -1331,7 +1331,7 @@ function openPastedSharedProject() {
 
     // Build a destination using THIS app's current host/path. This avoids opening
     // the other person's localhost port (e.g. 5500 vs 5501) or external browser.
-    const editorURL = new URL("editor.html", window.location.href);
+    const editorURL = new URL("../editor/", window.location.href);
     editorURL.searchParams.set("projectId", details.projectId);
     if (details.shareToken) editorURL.searchParams.set("shareToken", details.shareToken);
     if (details.storyId) editorURL.searchParams.set("storyId", details.storyId);
@@ -1403,7 +1403,7 @@ document.getElementById("logoutBtn")?.addEventListener("click", () => {
         localStorage.removeItem(key);
     });
 
-    window.location.assign("/papercut/index.html");
+    window.location.assign("../../");
 });
 
 document.getElementById("manageGroupsBtn")?.addEventListener("click", () => {

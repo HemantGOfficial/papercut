@@ -306,7 +306,7 @@ signupForm.addEventListener("submit", async function (event) {
 
         localStorage.setItem("userId", userId);
 
-        windowLocation("/papercut/projects.html");
+        windowLocation("../workspace/projects/");
 
         signupForm.reset();
         strengthBar.style.width = "0%";

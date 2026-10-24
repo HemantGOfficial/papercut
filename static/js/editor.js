@@ -1114,6 +1114,8 @@
                 blob = new Blob([buildFdx()], { type: 'application/xml' }); name += '.fdx';
             } else if (kind === 'docx') {
                 blob = buildDocx(); name += '.docx';
+            } else if (kind === 'wpcut') {
+                blob = buildWpcut(); name += '.wpcut';
             }
         } catch (err) { notify('Export failed'); return; }
         if (!blob) { notify('Nothing to export yet'); return; }
@@ -1123,9 +1125,384 @@
     exportBtn.addEventListener('click', function () { setMenu(exportList_.hidden); });
     document.addEventListener('mousedown', function (e) { if (!exportList_.hidden && !$('exportMenu').contains(e.target)) setMenu(false); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !exportList_.hidden) { setMenu(false); exportBtn.focus(); } });
-    [['pdfbtn', 'pdf'], ['exfountain', 'fountain'], ['exfdx', 'fdx'], ['exdocx', 'docx']].forEach(function (p) {
+    [['pdfbtn', 'pdf'], ['exfountain', 'fountain'], ['exfdx', 'fdx'], ['exdocx', 'docx'], ['exwpcut', 'wpcut']].forEach(function (p) {
         $(p[0]).addEventListener('click', function () { setMenu(false); runExport(p[1]); });
     });
+
+    /*PURE-START*/
+    /* ---------- Import: shared helpers ---------- */
+    var TYPE_IDS = T.map(function (t) { return t.id; });
+    function cleanText(s) {
+        return String(s == null ? '' : s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u200B\uFEFF]/g, '').replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+    function stripBom(s) { return String(s).replace(/^\uFEFF/, ''); }
+    function titleFromFile(name) { return String(name || '').replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+    /* Exported titles are printed in capitals; bring "NIGHT REEL" back to "Night Reel". */
+    function nicerTitle(s) {
+        s = cleanText(s);
+        if (s && s === s.toUpperCase() && /[A-Z]/.test(s)) s = s.toLowerCase().replace(/(^|[\s\-(“"'])([a-z])/g, function (m, a, b) { return a + b.toUpperCase(); });
+        return s;
+    }
+    function stripContd(x) { return x.replace(/\s*\((?:CONT'?D|CONTINUED)\.?\)\s*/ig, ' ').replace(/\s*\^$/, '').replace(/\s+/g, ' ').trim(); }
+
+    /* ---------- Import: Final Draft (.fdx) ----------
+       An .fdx is XML. Every <Paragraph Type="..."> is one element; its text is split over <Text> runs.
+       Notes attached to a scene heading (<ScriptNote>) become that scene's note. */
+    var FDX_IN = {
+        'scene heading': 'scene', 'action': 'action', 'general': 'action', 'shot': 'action',
+        'character': 'character', 'parenthetical': 'paren', 'dialogue': 'dialogue', 'transition': 'transition'
+    };
+    function fdxParagraphText(p) {
+        var s = '';
+        for (var c = p.firstElementChild; c; c = c.nextElementSibling) if (c.nodeName === 'Text') s += c.textContent;
+        return s;
+    }
+    function parseFdx(src) {
+        var xml = new DOMParser().parseFromString(stripBom(src), 'application/xml');
+        if (xml.getElementsByTagName('parsererror').length || !xml.documentElement || xml.documentElement.nodeName !== 'FinalDraft') throw new Error('This is not a valid Final Draft (.fdx) file.');
+        var root = xml.documentElement, content = null, title = '', k, c;
+        for (c = root.firstElementChild; c; c = c.nextElementSibling) if (c.nodeName === 'Content') { content = c; break; }
+        if (!content) throw new Error('No script content found in this .fdx file.');
+        var out = [], paras = content.getElementsByTagName('Paragraph');
+        for (k = 0; k < paras.length; k++) {
+            var p = paras[k], inNote = false, a = p.parentNode;
+            while (a && a !== content) { if (a.nodeName === 'ScriptNote') { inNote = true; break; } a = a.parentNode; }
+            if (inNote) continue;
+            var type = FDX_IN[String(p.getAttribute('Type') || 'Action').toLowerCase()];
+            if (!type) { if (/^(cast list|new act|end of act)$/i.test(p.getAttribute('Type') || '')) continue; type = 'action'; }
+            var x = cleanText(fdxParagraphText(p));
+            if (type === 'character') x = stripContd(x);
+            if (type === 'paren') x = x.replace(/^\(\s*/, '').replace(/\s*\)$/, '').trim();
+            if (!x) continue;
+            var rec = { t: type, x: x };
+            if (type === 'scene') {
+                var notes = p.getElementsByTagName('ScriptNote'), nt = [], j;
+                for (j = 0; j < notes.length; j++) {
+                    var np = notes[j].getElementsByTagName('Paragraph'), s = '', q;
+                    for (q = 0; q < np.length; q++) s += (s ? '\n' : '') + cleanText(fdxParagraphText(np[q]));
+                    if (s.trim()) nt.push(s.trim());
+                }
+                if (nt.length) rec.n = nt.join('\n');
+            }
+            out.push(rec);
+        }
+        var tp = null;
+        for (c = root.firstElementChild; c; c = c.nextElementSibling) if (c.nodeName === 'TitlePage') { tp = c; break; }
+        if (tp) {
+            var tps = tp.getElementsByTagName('Paragraph');
+            for (k = 0; k < tps.length && !title; k++) title = cleanText(fdxParagraphText(tps[k]));
+        }
+        return { title: nicerTitle(title), blocks: out };
+    }
+
+    /* ---------- Import: PDF ----------
+       pdf.js gives every piece of text with its position on the page. A screenplay PDF is typeset on a fixed
+       grid (Courier 12pt), so the left edge of a line tells its element type:
+         left margin ........ scene heading / action / transition (told apart by the words)
+         about 1.0in in ..... dialogue        about 1.5in in ..... parenthetical
+         about 2.0-2.2in in . character cue   far right ........... transition
+       Margins are measured from the page itself (the leftmost text column), so Letter, A4 and shifted margins all work.
+       Page numbers, CONTINUED: / (MORE) marks and scene numbers in the margins are removed. */
+    var PDF_TRANS = /^(?:CUT TO:|MATCH CUT TO:|SMASH CUT TO:|JUMP CUT TO:|FADE IN:|FADE OUT\.?|FADE TO BLACK\.?|DISSOLVE TO:|WIPE TO:|IRIS OUT\.?|THE END\.?|END\.)$/i;
+    function pdfIsTransition(l) { return PDF_TRANS.test(l) || /^[A-Z0-9 .,'’()\-]+TO:$/.test(l); }
+    function median(a) { if (!a.length) return 0; var s = a.slice().sort(function (x, y) { return x - y; }); return s[s.length >> 1]; }
+    function pctile(a, p) { if (!a.length) return 0; var s = a.slice().sort(function (x, y) { return x - y; }); return s[Math.min(s.length - 1, Math.floor(s.length * p))]; }
+    function joinPdfItems(its) {
+        var out = '', prev = null;
+        its.forEach(function (it) {
+            var s = it.s;
+            if (prev && it.x - (prev.x + prev.w) > it.fs * 0.15 && !/\s$/.test(out) && !/^\s/.test(s)) out += ' ';
+            out += s; prev = it;
+        });
+        return out.replace(/\s+/g, ' ').trim();
+    }
+    var SCNUM = /^\d{1,4}[A-Z]{0,2}\.?$/;
+    function pdfPageLines(pg, pi) {
+        var its = pg.items.filter(function (i) { return i.s && i.s.trim(); }), rows = [], row = null, lines = [];
+        its.sort(function (a, b) { return a.y - b.y || a.x - b.x; });
+        its.forEach(function (it) {
+            if (row && Math.abs(it.y - row.y) <= Math.max(2, it.fs * 0.35)) row.items.push(it);
+            else { row = { y: it.y, items: [it] }; rows.push(row); }
+        });
+        rows.forEach(function (r) {
+            var a = r.items.sort(function (p, q) { return p.x - q.x; }), fs = 0;
+            a.forEach(function (i) { fs = Math.max(fs, i.fs); });
+            if (r.y < 62 || pg.h - r.y < 50) return;                        /* running header, footer, page number */
+            if (a.length > 1 && SCNUM.test(a[0].s.trim()) && a[1].x - (a[0].x + a[0].w) > fs * 2 && SCN.test(joinPdfItems(a.slice(1)))) a = a.slice(1);
+            if (a.length > 1 && SCNUM.test(a[a.length - 1].s.trim()) && a[a.length - 1].x - (a[a.length - 2].x + a[a.length - 2].w) > fs * 3 && SCN.test(joinPdfItems(a.slice(0, -1)))) a = a.slice(0, -1);
+            var text = joinPdfItems(a);
+            if (!text) return;
+            if (/^\(?CONTINUED:?\)?(?:\s*\(?\d+\)?)?$/i.test(text) || /^\(?CONT'?D\.?\)?$/i.test(text)) return;
+            var last = a[a.length - 1], ln = { pg: pi, y: r.y, x0: a[0].x, x1: last.x + last.w, text: text, fs: fs };
+            if (/^\(MORE\)$/i.test(text)) ln.mark = 'more';
+            lines.push(ln);
+        });
+        return lines;
+    }
+    function pdfToBlocks(pages, fileTitle) {
+        var perPage = pages.map(function (pg, i) { return pdfPageLines(pg, i); }), total = 0;
+        perPage.forEach(function (a) { total += a.length; });
+        if (!total) throw new Error('No selectable text found in this PDF. If it is a scan, run OCR on it first.');
+        /* A first page with no scene heading, no FADE IN: and only a few lines is the title page. */
+        var title = '', first = 0, p0 = perPage[0];
+        function hasScene(arr) { return arr.some(function (l) { return SCN.test(l.text) || /^FADE IN:?$/i.test(l.text); }); }
+        if (perPage.length > 1 && p0.length && p0.length <= 25 && !hasScene(p0) && perPage.slice(1).some(hasScene)) {
+            first = 1;
+            var tl = [], gapMax = p0[0].fs * 2.4;
+            for (var q = 0; q < p0.length; q++) { if (q && p0[q].y - p0[q - 1].y > gapMax) break; tl.push(p0[q].text); }
+            title = nicerTitle(tl.join(' '));
+        }
+        var lines = [];
+        perPage.forEach(function (a, i) { if (i >= first) a.forEach(function (l) { lines.push(l); }); });
+        var body = lines.filter(function (l) { return !l.mark; });
+        if (!body.length) throw new Error('No script text found in this PDF.');
+        /* Left margin = leftmost column that holds a real share of the lines. */
+        var fsMed = median(body.map(function (l) { return l.fs; })) || 12, step = Math.max(2, fsMed * 0.35), bins = {}, need = Math.max(2, Math.ceil(body.length * 0.04));
+        body.forEach(function (l) { var k = Math.round(l.x0 / step); (bins[k] = bins[k] || []).push(l.x0); });
+        var keys = Object.keys(bins).map(Number).sort(function (a, b) { return a - b; }), base = body[0].x0;
+        for (var bi = 0; bi < keys.length; bi++) if (bins[keys[bi]].length >= need) { base = median(bins[keys[bi]]); break; }
+        /* Normal line spacing, so a bigger jump means a blank line. */
+        var diffs = [];
+        for (var di = 1; di < body.length; di++) { var d = body[di].y - body[di - 1].y; if (body[di].pg === body[di - 1].pg && d >= fsMed * 0.8 && d <= fsMed * 1.8) diffs.push(d); }
+        var lh = median(diffs) || fsMed;
+        body.forEach(function (l) {
+            var dx = l.x0 - base;
+            l.k = dx >= 200 ? 'trans' : dx >= 128 ? 'char' : dx >= 90 ? 'paren' : dx >= 20 ? 'dlg' : 'left';
+        });
+        /* How far a full line reaches, per kind: tells whether a paragraph carries on over a page break. */
+        var reach = {};
+        ['left', 'dlg'].forEach(function (k) {
+            var xs = body.filter(function (l) { return l.k === k; }).map(function (l) { return l.x1; });
+            reach[k] = xs.length >= 5 ? pctile(xs, 0.9) : 1e9;
+        });
+        var blocks = [], prev = null, more = false, lastChar = '', merge = false;
+        lines.forEach(function (l) {
+            if (l.mark === 'more') { more = true; return; }
+            var m = more; more = false;
+            var gap = false;
+            if (prev) {
+                if (prev.pg === l.pg) gap = (l.y - prev.y) > lh * 1.45;
+                else gap = !(reach[prev.k] && prev.x1 >= reach[prev.k] - fsMed);
+            }
+            var last = blocks[blocks.length - 1], t = l.text;
+            if (l.k === 'char') {
+                var name = stripContd(t);
+                if (!name) { prev = l; return; }
+                if (m && name.replace(/\s*\([^)]*\)\s*$/, '').toUpperCase() === lastChar && last && last.t === 'dialogue') merge = true;    /* same speaker carries on after (MORE) */
+                else { blocks.push({ t: 'character', x: name }); lastChar = name.replace(/\s*\([^)]*\)\s*$/, '').toUpperCase(); merge = false; }
+            } else if (l.k === 'paren') {
+                var inner = t.replace(/^\(\s*/, '').replace(/\)\s*$/, '');
+                if (last && last.t === 'paren' && last.o && !gap) { last.x += ' ' + inner; last.o = !/\)\s*$/.test(t); }
+                else { blocks.push({ t: 'paren', x: inner, o: !/\)\s*$/.test(t) }); }
+            } else if (l.k === 'dlg') {
+                if (last && last.t === 'dialogue' && (merge || m || !gap)) last.x += ' ' + t;
+                else blocks.push({ t: 'dialogue', x: t });
+                merge = false;
+            } else if (l.k === 'trans') {
+                blocks.push({ t: 'transition', x: t }); merge = false;
+            } else {
+                merge = false;
+                if (SCN.test(t) || /^\.[A-Za-z]/.test(t)) blocks.push({ t: 'scene', x: t.replace(/^\./, '').replace(/\s*#[^#\s]+#\s*$/, '') });
+                else if (pdfIsTransition(t)) blocks.push({ t: 'transition', x: t });
+                else if (last && last.t === 'scene' && !gap && prev && prev.k === 'left' && t === t.toUpperCase()) last.x += ' ' + t;
+                else if (last && last.t === 'action' && !gap) last.x += ' ' + t;
+                else blocks.push({ t: 'action', x: t });
+            }
+            prev = l;
+        });
+        blocks.forEach(function (b) { delete b.o; b.x = cleanText(b.x); });
+        blocks = blocks.filter(function (b) { return b.x; });
+        if (!blocks.length) throw new Error('No script text found in this PDF.');
+        return { title: title || fileTitle || '', blocks: blocks, pages: pages.length, titlePage: first === 1 };
+    }
+
+    /* ---------- PaperCut file (.wpcut) ----------
+       A .wpcut is plain JSON (readable, diff-able) with a version number and a CRC32 checksum of the script:
+         { format:"wpcut", version:1, generator, title, createdAt, stats, script:[{type,text,note?}], sceneFolders:[{name,scenes:[n]}], checksum }
+       Folders refer to scenes by their number in the script (0 = first scene), so they survive renames. */
+    var WPCUT_VERSION = 1;
+    function sceneKeysOf(list) {
+        var counts = {};
+        return list.map(function (b) {
+            if (b.t !== 'scene') return null;
+            var h = (b.x || '').trim().replace(/\s+/g, ' ').toLowerCase() || 'untitled scene';
+            counts[h] = (counts[h] || 0) + 1;
+            return h + '||' + counts[h];
+        });
+    }
+    function wpcutChecksum(script) { return 'crc32:' + ('00000000' + crc32(new TextEncoder().encode(JSON.stringify(script))).toString(16)).slice(-8); }
+    function parseWpcut(src) {
+        var o;
+        try { o = JSON.parse(stripBom(src)); } catch (err) { throw new Error('This is not a valid .wpcut file (it could not be read).'); }
+        if (!o || o.format !== 'wpcut' || !Array.isArray(o.script)) throw new Error('This is not a PaperCut (.wpcut) file.');
+        var warn = '';
+        if (typeof o.version === 'number' && o.version > WPCUT_VERSION) warn = 'made by a newer PaperCut, some details may be missing';
+        var blocks = [];
+        o.script.forEach(function (r) {
+            if (!r || typeof r !== 'object') return;
+            var t = TYPE_IDS.indexOf(r.type) >= 0 ? r.type : 'action', x = String(r.text == null ? '' : r.text).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
+            var rec = { t: t, x: x };
+            if (t === 'scene' && r.note) rec.n = String(r.note);
+            blocks.push(rec);
+        });
+        if (o.checksum && !warn && o.checksum !== wpcutChecksum(o.script)) warn = 'the file was edited outside PaperCut';
+        var folders = Array.isArray(o.sceneFolders) ? o.sceneFolders.filter(function (g) { return g && typeof g.name === 'string' && Array.isArray(g.scenes); }).map(function (g) {
+            return { name: g.name.slice(0, 120), scenes: g.scenes.filter(function (n) { return Number.isInteger(n) && n >= 0; }) };
+        }) : [];
+        return { title: typeof o.title === 'string' ? o.title.trim() : '', blocks: blocks, folders: folders, warn: warn };
+    }
+    /*PURE-END*/
+
+    /*WIRE-START*/
+    function buildWpcut() {
+        refreshContd();
+        var all = data(false), keysAll = sceneKeysOf(all).filter(function (k) { return k; });
+        var list = all.filter(function (b) { return b.t === 'scene' || b.x.trim(); });
+        var script = list.map(function (b) {
+            var r = { type: b.t, text: b.x.replace(/\s+$/, '') };
+            if (b.t === 'scene' && b.n && b.n.trim()) r.note = b.n.trim();
+            return r;
+        });
+        var folders = [], api = window.papercutSceneGroups;
+        if (api) {
+            try {
+                api.get().forEach(function (g) {
+                    var nums = (g.sceneKeys || []).map(function (k) { return keysAll.indexOf(k); }).filter(function (n) { return n >= 0; }).sort(function (a, b) { return a - b; });
+                    folders.push({ name: g.name || 'Scene group', scenes: nums });
+                });
+            } catch (err) { }
+        }
+        var doc = {
+            format: 'wpcut', version: WPCUT_VERSION, generator: 'PaperCut',
+            title: titleIn.value.trim(), createdAt: new Date().toISOString(),
+            stats: { elements: script.length, scenes: keysAll.length, words: parseInt(String($('wd').textContent).replace(/\D/g, ''), 10) || 0, pages: parseInt($('pg').textContent, 10) || 1 },
+            script: script, sceneFolders: folders, checksum: wpcutChecksum(script)
+        };
+        return new Blob([JSON.stringify(doc, null, 2) + '\n'], { type: 'application/json' });
+    }
+
+    /* ---------- Import: reading files and loading them into the editor ---------- */
+    var PDFJS_VER = '3.11.174', PDFJS_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/' + PDFJS_VER + '/';
+    var pdfLibPromise = null;
+    function loadPdfJs() {
+        if (window.pdfjsLib) { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + 'pdf.worker.min.js'; return Promise.resolve(window.pdfjsLib); }
+        if (pdfLibPromise) return pdfLibPromise;
+        pdfLibPromise = new Promise(function (resolve, reject) {
+            var s = document.createElement('script');
+            s.src = PDFJS_BASE + 'pdf.min.js';
+            s.onload = function () {
+                if (!window.pdfjsLib) { reject(new Error('PDF reader did not start.')); return; }
+                window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + 'pdf.worker.min.js';
+                resolve(window.pdfjsLib);
+            };
+            s.onerror = function () { pdfLibPromise = null; reject(new Error('Could not load the PDF reader. Check your internet connection.')); };
+            document.head.append(s);
+        });
+        return pdfLibPromise;
+    }
+    function readPdfPages(buf) {
+        return loadPdfJs().then(function (lib) { return lib.getDocument({ data: new Uint8Array(buf) }).promise; }).then(function (doc) {
+            var out = [], chain = Promise.resolve();
+            function one(n) {
+                return doc.getPage(n).then(function (page) {
+                    var vp = page.getViewport({ scale: 1 });
+                    return page.getTextContent().then(function (tc) {
+                        var items = [];
+                        tc.items.forEach(function (it) {
+                            if (typeof it.str !== 'string' || !it.str.trim()) return;
+                            var pt = vp.convertToViewportPoint(it.transform[4], it.transform[5]);
+                            items.push({ s: it.str, x: pt[0], y: pt[1], w: it.width || 0, fs: Math.hypot(it.transform[0], it.transform[1]) || it.height || 12 });
+                        });
+                        out.push({ w: vp.width, h: vp.height, items: items });
+                    });
+                });
+            }
+            for (var n = 1; n <= doc.numPages; n++) (function (k) { chain = chain.then(function () { setStatus('Reading PDF page ' + k + ' of ' + doc.numPages + '…'); return one(k); }); })(n);
+            return chain.then(function () { return out; });
+        }).catch(function (err) {
+            if (err && err.name === 'PasswordException') throw new Error('This PDF is password protected. Remove the password and try again.');
+            throw err;
+        });
+    }
+    var IMPORT_KINDS = {
+        fountain: { accept: '.fountain,.spmd,.txt,text/plain', label: 'Fountain' },
+        fdx: { accept: '.fdx,.xml', label: 'Final Draft' },
+        pdf: { accept: '.pdf,application/pdf', label: 'PDF' },
+        wpcut: { accept: '.wpcut', label: 'PaperCut' }
+    };
+    function kindFromName(name) {
+        var m = /\.([a-z0-9]+)$/i.exec(name || ''), e = m ? m[1].toLowerCase() : '';
+        return e === 'fountain' || e === 'spmd' || e === 'txt' ? 'fountain' : e === 'fdx' ? 'fdx' : e === 'pdf' ? 'pdf' : e === 'wpcut' ? 'wpcut' : '';
+    }
+    function readImport(file, kind) {
+        if (kind === 'pdf') return file.arrayBuffer().then(function (buf) { return readPdfPages(buf); }).then(function (pages) { return pdfToBlocks(pages, titleFromFile(file.name)); });
+        return file.text().then(function (txt) {
+            if (kind === 'fdx') return parseFdx(txt);
+            if (kind === 'wpcut') return parseWpcut(txt);
+            var r = parseFountain(stripBom(txt));
+            return { title: r.title, blocks: r.blocks };
+        });
+    }
+    function applyFolders(folders, blocks) {
+        var api = window.papercutSceneGroups;
+        if (!api) return;
+        var keys = sceneKeysOf(blocks).filter(function (k) { return k; });
+        var groups = folders.map(function (g, i) {
+            return { id: Date.now().toString(36) + i, name: g.name, sceneKeys: g.scenes.map(function (n) { return keys[n]; }).filter(function (k) { return k; }) };
+        });
+        try { api.put(groups); setTimeout(function () { try { api.render(); } catch (err) { } }, 400); } catch (err) { }
+    }
+    function finishImport(res, file, kind) {
+        var blocks = res.blocks || [], filled = blocks.filter(function (b) { return b.x.trim(); }).length, scenes = blocks.filter(function (b) { return b.t === 'scene'; }).length;
+        if (!filled) throw new Error('No script text found in this file.');
+        var hasContent = data().some(function (b) { return b.x.trim(); });
+        if (hasContent && !window.confirm('Import "' + file.name + '"?\n' + filled + ' elements, ' + scenes + ' scenes.\n\nThis replaces the current script. You can undo with Ctrl+Z.')) { notify('Import cancelled'); return; }
+        snapshot();
+        render(blocks);
+        var cur_ = titleIn.value.trim(), title = res.title || ((!cur_ || /^(Untitled screenplay|Loading screenplay…)$/.test(cur_)) ? titleFromFile(file.name) : cur_);
+        titleIn.value = title;
+        if (kind === 'wpcut') applyFolders(res.folders || [], blocks);
+        var f = paper.firstElementChild; if (f) { setCaret(f, f.textContent.length); setCur(f); }
+        changed();
+        notify('Imported ' + file.name + ' · ' + filled + ' elements' + (kind === 'pdf' ? ' (check the element types)' : '') + (res.warn ? ' · ' + res.warn : ''));
+    }
+    function runImport(file, kind) {
+        kind = kind || kindFromName(file.name);
+        if (!kind) { notify('Unsupported file type'); window.alert('PaperCut can import .fountain, .fdx, .pdf and .wpcut files.'); return; }
+        setStatus('Importing ' + file.name + '…');
+        readImport(file, kind).then(function (res) { finishImport(res, file, kind); }).catch(function (err) {
+            var msg = (err && err.message) || String(err);
+            notify('Import failed');
+            window.alert('Could not import ' + file.name + '\n\n' + msg);
+        });
+    }
+    var importBtn = $('importBtn'), importList_ = $('importList'), importFile = $('importFile'), importKind = '';
+    function setImportMenu(open) { importList_.hidden = !open; importBtn.setAttribute('aria-expanded', String(open)); }
+    importBtn.addEventListener('click', function () { var o = importList_.hidden; setMenu(false); setImportMenu(o); });
+    exportBtn.addEventListener('click', function () { if (!exportList_.hidden) setImportMenu(false); });
+    document.addEventListener('mousedown', function (e) { if (!importList_.hidden && !$('importMenu').contains(e.target)) setImportMenu(false); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !importList_.hidden) { setImportMenu(false); importBtn.focus(); } });
+    [['imfountain', 'fountain'], ['imfdx', 'fdx'], ['impdf', 'pdf'], ['imwpcut', 'wpcut']].forEach(function (p) {
+        $(p[0]).addEventListener('click', function () {
+            setImportMenu(false); importKind = p[1];
+            importFile.accept = IMPORT_KINDS[p[1]].accept; importFile.value = ''; importFile.click();
+        });
+    });
+    importFile.addEventListener('change', function () {
+        var f = importFile.files && importFile.files[0];
+        if (f) runImport(f, importKind || kindFromName(f.name));
+        importFile.value = '';
+    });
+    /* Drop a .fountain / .fdx / .pdf / .wpcut file anywhere on the page to import it. */
+    document.addEventListener('dragover', function (e) { if (e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') >= 0) e.preventDefault(); });
+    document.addEventListener('drop', function (e) {
+        var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (!f) return;
+        var k = kindFromName(f.name);
+        e.preventDefault();
+        if (k) runImport(f, k); else notify('Unsupported file type');
+    });
+    /*WIRE-END*/
 
     /* ---------- toolbar actions ---------- */
     var armed = false, armT;
@@ -1169,7 +1546,7 @@
 
 function back()
 {
-    window.location.href = "/papercut/projects.html";
+    window.location.href = "../projects/";
 }
 
 /* Papercut Story Planner integration: zoom, scene groups and animated right tabs. */
@@ -1272,6 +1649,7 @@ function back()
     // Dropping onto the general navigator removes a scene from its folder, without changing screenplay order.
     dropZone(groupsWrap,null);
   }
+  window.papercutSceneGroups={get:getGroups,put:putGroups,render:renderGroups};
   $('createSceneGroup')?.addEventListener('click',()=>{groupForm.hidden=!groupForm.hidden;if(!groupForm.hidden)$('sceneGroupName').focus();});
   $('cancelSceneGroup')?.addEventListener('click',()=>{groupForm.hidden=true;$('sceneGroupName').value='';});
   $('saveSceneGroup')?.addEventListener('click',()=>{const name=$('sceneGroupName').value.trim();if(!name){alert('Enter a folder name.');return;}const groups=getGroups();groups.push({id:Date.now().toString(36),name,sceneKeys:[]});putGroups(groups);$('sceneGroupName').value='';groupForm.hidden=true;renderGroups();});
